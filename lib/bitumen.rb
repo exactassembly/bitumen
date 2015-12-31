@@ -2,6 +2,11 @@ require "rummager"
 require "bitumen/version"
 require "bitumen/dsl_definition"
 
+if FileTest::exists?(File.join( Rake.application.original_dir, 'local.conf.rb') )
+    puts "using local.conf.rb" if Rake.verbose == true
+    load File.join( Rake.application.original_dir, 'local.conf.rb')
+end
+
 # variables that affect global Docker operations
 DOCKER_POSTFIX = "_#{Etc.getlogin}" unless defined? DOCKER_POSTFIX
 DOCKER_CNTNR_DEVENV_BASE = 'devenv'
