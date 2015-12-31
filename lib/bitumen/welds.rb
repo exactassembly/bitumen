@@ -2,33 +2,36 @@ require 'rummager'
 
 module Bitumen
 
-    DOCKER_CNTNR_USER = "minion"
     GIT_URI_POKY="git://git.yoctoproject.org/poky.git"
     DEFAULT_BRNCH_POKY="master"
-    DIR_CNTNR_BUILD="/build"
 
     class Weld
-        attr_accessor :mastic
-        attr_accessor :docker_user
-        attr_accessor :needed_test
-        attr_accessor :cmd_list
-        
+        attr_reader :mastic
+        attr_reader :job_name
+        attr_reader :rummager_object
+        attr_reader :enter_dep_job
+
         def initialize( new_mastic )
             if ! new_mastic.instance_of?(Bitumen::Mastic)
-                raise ArgumentError, "base:#{base.to_string} is not a subclass of Mastic"
-            end # if base.instance_of?
+                raise ArgumentError, "arg:#{new_mastic.to_string} is not a subclass of Mastic"
+            end # if new_mastic.instance_of?
+            
             @mastic = new_mastic
-            @docker_user = DOCKER_CNTNR_USER
-            @needed_test = []
-            @exec_list = []
+            @job_name = "unknown"
+            @job_args = {}
+            @enter_dep_job = true
+            @operations = []
         end # def initialize
         
-        def job_name
-            "unknown"
-        end
-                
-        def enter_dep_job
-            true
+        # some settings may not be present at real initialization time,
+        # so we call this later 'init' function just before we perform the
+        # generate_rake steps
+        def late_init
+            @operations << {
+                :type => "chown",
+                :user => @mastic.cntnr_user,
+                :path => @mastic.cntnr_build_path,
+            }
         end
         
         ###
@@ -36,12 +39,39 @@ module Bitumen
         # data structure.
         ###
         def generate_rake
-            Rummager::ClickCntnrExec.new self.job_name, {
-                :container_name => @mastic.container_name,
-                :user => @docker_user,
-                :needed_test => @needed_test,
-                :exec_list => @exec_list,
-            }
+            self.late_init
+            @job_args[:container_name] = @mastic.container_name
+            @job_args[:user] = @mastic.cntnr_user
+            @job_args[:exec_list] = []
+            
+            @operations.each do |op|
+                op_type = op.delete(:type)
+                case op_type
+                    when "chown"
+                        @job_args[:exec_list] << Rummager::cmd_sudochown(op[:user],
+                                                                         op[:path])
+                    when "gitclone"
+                        @job_args[:exec_list] << Rummager::cmd_gitclone(op[:branch],
+                                                                        op[:uri],
+                                                                        op[:path])
+                    when "sed"
+                        @job_args[:exec_list] << {
+                            :cmd=> [ "/bin/sed","-e",op[:sedcmd],"-i",op[:filetarget] ]
+                        }
+                    when "bash"
+                        cmdstring = op.delete(:cmd)
+                        exec_hash = {
+                            :cmd => ["/bin/bash","-c",cmdstring],
+                        }
+                        exec_hash.merge(op)
+                        @job_args[:exec_list] << exec_hash
+                    else
+                        raise ArgumentError, "Unknown git operation '#{gop[:operation]}'"
+                end #case op[:type]
+                
+            end #@operations.each
+            
+            @rummager_object = Rummager::ClickCntnrExec.new self.job_name, @job_args
         end # generate_rake
         
     end # class Weld
@@ -50,59 +80,92 @@ module Bitumen
     # This is the generic handler for stuff that needs to be added to a
     # container and for modifications to Yocto configuration files
     ###
-    class YoctoLayer < Bitumen::Weld
+    class YoctoLayerCommon < Bitumen::Weld
         attr_accessor :layer_name
-        attr_accessor :container_path
         attr_accessor :uri
         attr_accessor :branch
 
         @@layer_count = 0
 
-        def initialize( new_mastic )
+        def initialize( new_mastic, new_layer_name, new_uri )
             super( new_mastic )
-            @layer_name = "layer_#{@@layer_count +=1}"
-            @uri = ""
+            @layer_name = new_layer_name
+            @job_name = "add_" + new_layer_name
+            @uri = new_uri
             @branch = "master"
-            @container_path = "/dev/null"
         end # def initialize
-
-        def job_name
-            "add_#{@layer_name}"
+        
+        def target_path
+            @mastic.cntnr_build_path + "/" + @layer_name
         end
-
-        def generate_rake
-            @exec_list << Rummager::cmd_sudochown(@docker_user,@container_path)
-            pokydir = @container_path + "/" + @layer_name
-            @exec_list << Rummager::cmd_gitclone(@branch,@uri,pokydir)
-            @exec_list << Rummager::cmd_bashexec(
-                 "cd #{pokydir} &&"\
-                 ". #{pokydir}/oe-init-build-env @container_path"
-            )
-            @exec_list << {
-                :cmd => ["/bin/sh","-c",
-                    "echo 'source #{pokydir}/oe-init-build-env #{@container_path}'"\
-                    ">> /home/#{@docker_user}/.profile"],
-                 :restart_after => true,
-            }
+        
+        def late_init
             super
+            
+            @operations << {
+                :type => "gitclone",
+                :branch => @branch,
+                :uri => @uri,
+                :path => target_path,
+            }
         end
+        
+    end # class YoctoLayerCommon
 
+    ###
+    # This is the specific handler for non-core layers including adding
+    # the right glue into the Yocto configuration files that is generataed
+    # by the YoctoCore constructor
+    ###
+    class YoctoLayer < YoctoLayerCommon
+        
+        def late_init
+            super
+            layersfile = @mastic.cntnr_build_path + "/conf/bblayers.conf"
+            
+            @job_args[:needed_test] = ["/bin/sh","-c","! grep -q #{target_path} #{layersfile}"]
+            
+            sed_string = "  \\%/build/poky/meta-yocto-bsp% a\\\n"\
+            "  #{target_path} \\\\"
+            @operations << {
+                :type => "sed",
+                :filetarget => layersfile,
+                :sedcmd => sed_string,
+            }
+        end
+        
     end # class YoctoLayer
+
 
     ###
     # This is the essential layer that must be included
     ###
-    class YoctoCore < YoctoLayer
+    class YoctoCore < YoctoLayerCommon
         
         def initialize( new_mastic )
-            super( new_mastic )
-            @layer_name = "poky"
-            @uri = Bitumen::GIT_URI_POKY
+            super( new_mastic, "poky", Bitumen::GIT_URI_POKY )
             @branch = Bitumen::DEFAULT_BRNCH_POKY
-            @container_path = "#{Bitumen::DIR_CNTNR_BUILD}"
-
-            @needed_test = ["/bin/sh","-c","! grep -q oe-init-build-env /home/minion/.profile"]
         end # def initialize
+
+        def late_init
+            super
+            profile_path = "/home/" + @mastic.cntnr_user + "/.profile"
+            
+            @job_args[:needed_test] = ["/bin/sh","-c","! grep -q oe-init-build-env #{profile_path}"]
+
+            @operations << {
+                :type => "bash",
+                :cmd => "cd #{target_path} && "\
+                        ". ./oe-init-build-env #{@mastic.cntnr_build_path}/",
+            }
+
+            @operations << {
+                :type => "bash",
+                :cmd => "echo 'source #{target_path}/oe-init-build-env #{@mastic.cntnr_build_path}' "\
+                        ">> #{profile_path}",
+                :restart_after => true,
+            }
+        end
         
     end # class YoctoPokyLayer
 
