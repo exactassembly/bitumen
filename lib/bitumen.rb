@@ -1,5 +1,5 @@
-require "rummager"
 require "bitumen/version"
+require "bitumen/rake_docker.rb"
 require "bitumen/dsl_definition"
 
 if FileTest::exists?(File.join( Rake.application.original_dir, 'local.conf.rb') )
@@ -12,10 +12,14 @@ DOCKER_POSTFIX = "_#{Etc.getlogin}" unless defined? DOCKER_POSTFIX
 DOCKER_CNTNR_DEVENV_BASE = 'devenv'
 DOCKER_CNTNR_DEVENV = DOCKER_CNTNR_DEVENV_BASE + DOCKER_POSTFIX
 
-if defined? DOCKER_REPO
-    Rummager.repo_base = DOCKER_REPO
-    else
-    Rummager.repo_base = "r#{DOCKER_POSTFIX}"
+#if defined? DOCKER_REPO
+#    Rummager.repo_base = DOCKER_REPO
+#else
+#    Rummager.repo_base = "r#{DOCKER_POSTFIX}"
+#end
+
+if ! defined? DOCKER_DEFAULT_USER
+    DOCKER_DEFAULT_USER = "minion"
 end
 
 # Host directories to be injected into the running container(s) when started

@@ -1,4 +1,5 @@
 require 'rake'
+require 'bitumen/rake_docker.rb'
 require 'bitumen/welds'
 
 module Bitumen
@@ -7,11 +8,13 @@ module Bitumen
     DOCKER_IMAGE_DEFAULT="debian4yocto"
     DIR_CNTNR_BUILD="/build"
     DOCKER_CNTNR_USER = "minion"
-    
+        
     class Mastic
         attr_reader :add_to_default
-        attr_accessor :repo_base
+        attr_accessor :image_repo
         attr_accessor :image_name
+        attr_accessor :image_tag
+        
         attr_accessor :binds
         
         attr_accessor :cntnr_build_path
@@ -24,65 +27,117 @@ module Bitumen
         def initialize( new_name )
             @name = new_name
             @add_to_default = true
-            @repo_base = DOCKER_REPO_DEFAULT
-            @image_name = DOCKER_IMAGE_DEFAULT
+            @image_repo = "unknown"
+            @image_name = "unknown"
+            @image_tag = "latest"
             @volumes_from = []
+            @binds = []
             @welds = []
             @cntnr_build_path = DIR_CNTNR_BUILD
             @cntnr_user = DOCKER_CNTNR_USER
             
         end # def initialize
         
-        def vols_from( new_vols_from )
+        def DockerImage( image_def )
+            @image_name = image_def
+            if ( image_def.include?("/"))
+                image_parts = image_def.split("/")
+                @image_repo = image_parts[0]
+                @image_name = image_parts[1]
+                if ( @image_name.include?(":"))
+                    name_parts = image_name.split(":")
+                    @image_name = name_parts[0]
+                    @image_tag = name_parts[1]
+                end
+            end
+        end # dockerImage
+        
+        def VolumesFrom( new_vols_from )
             @volumes_from.push( new_vols_from )
-        end # def vols_from
+        end # def volumesFrom
 
-        def weldYoctoLayer(new_name,new_uri,&block)
-            new_weld = Bitumen::YoctoLayer.new(self,new_name,new_uri)
+        def HostBind( host_path, container_path )
+            @binds.push( "#{host_path}:#{container_path}" )
+        end # def hostBind
+
+        def GitClone(new_uri,arghash={},&block)
+            new_weld = Bitumen::GitClone.new(self,new_uri,arghash)
             @welds << new_weld
             new_weld.instance_eval(&block) if block_given?
             return new_weld
-        end # def weldYoctoLayer
+        end # def gitClone
 
-        def weldYoctoCore(&block)
-            new_weld = Bitumen::YoctoCore.new(self)
-            @welds << new_weld
-            new_weld.instance_eval(&block) if block_given?
-            return new_weld
+        def YoctoLayer(new_name,arghash={},&block)
+            layer_weld = Bitumen::YoctoLayer.new(self,new_name,arghash)
+            @welds << layer_weld
+            layer_weld.instance_eval(&block) if block_given?
+            return layer_weld
+        end # def yoctoLayer
+
+        def YoctoCore(arghash={},&block)
+            core_weld = Bitumen::YoctoCore.new(self,arghash)
+            @welds << core_weld
+            core_weld.instance_eval(&block) if block_given?
+            return core_weld
         end # def weldYoctoCore
 
+        def BitbakeTarget(new_target,**arghash,&block)
+            target_weld = Bitumen::BitbakeTarget.new(self,new_target,arghash)
+            @welds << target_weld
+            target_weld.instance_eval(&block) if block_given?
+            return target_weld
+        end # bitbakeTarget
 
         ###
         # This is where the real work is done to create the Rummager
         # data structure.
         ###
         def generate_rake
+            Rake::Task.define_task( :"mastics:#{@name}:welds:setup" )
+            Rake::Task[ :"mastics:setup" ].enhance( [ :"mastics:#{@name}:welds:setup" ] )
+            
+            Rake::Task.define_task( :"mastics:#{@name}:welds:all" )
+            Rake::Task[ :"mastics:all" ].enhance( [ :"mastics:#{@name}:welds:all" ] )
+            
+            Bitumen::DockerPulledImage.new @image_name, {
+                :repo => @image_repo,
+                :tag => @image_tag,
+            }
+            
+#            Bitumen::DockerContainer.new self.container_name, {
+#                :repo_base => @repo_base,
+#                :image_name => @image_name,
+#                :image_nobuild => true,
+#                :allow_enter => true,
+#                :publishall => true,
+#                :binds => @binds,
+#                :enter_dep_jobs => enter_dep_jobs,
+#            }
+
+            Bitumen::DockerContainer.new self.container_name, {
+                :image_repo => @image_repo,
+                :image_name => @image_name,
+                :binds => @binds,
+            }
+
             # this will be the set of jobs we require the container to
             # execute at least once
-            enter_dep_jobs = []
-            
+            jobs = []
+
             @welds.each do |w|
                 w.generate_rake
-                if w.enter_dep_job
-                    enter_dep_jobs << w.job_name
+                if w.rake_target
+                    if w.setup_weld?
+                        Rake::Task[ :"mastics:#{@name}:welds:setup" ].enhance ( [ :"#{w.rake_target}" ] )
+                    else
+                        Rake::Task[ :"mastics:#{@name}:welds:all" ].enhance ( [ :"#{w.rake_target}" ] )
+                        Rake::Task[ :"#{w.rake_target}" ].enhance ( [ :"mastics:#{@name}:welds:setup" ] )
+                    end
                 end
             end
             #            @volumes_from.each do |vf|
             #            end
-            
-            Rummager::ClickContainer.new self.container_name, {
-                :repo_base => @repo_base,
-                :image_name => @image_name,
-                :image_nobuild => true,
-                :allow_enter => true,
-                :publishall => true,
-                :binds => @binds,
-                :enter_dep_jobs => enter_dep_jobs,
-            }
-            
-            if @add_to_default
-                Rake::Task[:default].enhance ( [ :"containers:#{container_name}:enter" ] )
-            end
+
         end
         
         #        def gen_rake_code

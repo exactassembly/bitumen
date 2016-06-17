@@ -15,9 +15,11 @@ Gem::Specification.new do |spec|
 
 #    spec.files         = `git ls-files -z`.split("\x0")
     spec.files         = [
-        'lib/bitumen/version.rb',
         'lib/bitumen/dsl_definition.rb',
         'lib/bitumen/mastic.rb',
+        'lib/bitumen/rake_docker.rb',
+        'lib/bitumen/rake_tasks.rb',
+        'lib/bitumen/version.rb',
         'lib/bitumen/welds.rb',
         'lib/bitumen.rb',
     ]
@@ -28,5 +30,4 @@ Gem::Specification.new do |spec|
     spec.add_development_dependency "bundler", "~> 1.7"
     spec.add_development_dependency "rake", "~> 10.0"
     spec.add_runtime_dependency "rake", "~> 10.0"
-    spec.add_runtime_dependency "rummager", "~> 0.6"
 end
