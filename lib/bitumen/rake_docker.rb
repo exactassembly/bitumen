@@ -146,7 +146,7 @@ module Bitumen
             begin
                 @container_obj ||= Docker::Container.get(@container_name.to_s)
             rescue
-                puts "WARNING: unable to locate docker container '#{@container_name.tos}'"
+                puts "WARNING: unable to locate docker container '#{@container_name}'"
             end
         end
         
