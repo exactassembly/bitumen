@@ -161,7 +161,11 @@ module Bitumen
             super( new_mastic )
             @layer_name = new_layer_name
             @job_name = "configure_" + new_layer_name
-            @path = arghash[:path]
+            if (! arghash.has_key?(:path) )
+                @path = @layer_name + "/"
+            else
+                @path = arghash[:path]
+            end
             
             # Always Chown the subdirectory before adding in layer files
             # otherwise we might run into ACL issues with the underlying
@@ -238,9 +242,10 @@ module Bitumen
         def initialize( new_mastic, arghash={} )
             super( new_mastic, "poky" )
             if (! arghash.has_key?(:machine_type) )
-                raise ArgumentError, "UNDEFINED MACHINE!"
+                @machine_type = "UNDEFINED"
+            else
+                @machine_type = arghash.delete(:machine_type)
             end
-            @machine_type = arghash.delete(:machine_type)
             @uri = arghash.delete(:uri) || Bitumen::GIT_URI_POKY
             @branch = arghash.delete(:branch) || Bitumen::DEFAULT_BRNCH_POKY
         end # def initialize
@@ -290,7 +295,7 @@ module Bitumen
             @weld_operations << {
                 :type => "fileappend",
                 :filetarget => local_conf_file,
-                :textblob => "MACHINE = '#{@machine_type}'",
+                :textblob => "MACHINE ?= '#{@machine_type}'",
             }
 
         end
