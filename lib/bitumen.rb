@@ -8,9 +8,9 @@ if FileTest::exists?(File.join( Rake.application.original_dir, 'local.conf.rb') 
 end
 
 # variables that affect global Docker operations
-DOCKER_POSTFIX = "_#{Etc.getlogin}" unless defined? DOCKER_POSTFIX
-DOCKER_CNTNR_DEVENV_BASE = 'devenv'
-DOCKER_CNTNR_DEVENV = DOCKER_CNTNR_DEVENV_BASE + DOCKER_POSTFIX
+#DOCKER_POSTFIX = "_#{Etc.getlogin}" unless defined? DOCKER_POSTFIX
+#DOCKER_CNTNR_DEVENV_BASE = 'devenv'
+#DOCKER_CNTNR_DEVENV = DOCKER_CNTNR_DEVENV_BASE + DOCKER_POSTFIX
 
 #if defined? DOCKER_REPO
 #    Rummager.repo_base = DOCKER_REPO
@@ -50,7 +50,7 @@ end
 #FILE_CONF_BBLAYERS="#{DIR_CNTNR_BBCONF}/bblayers.conf"
 
 # output variables
-if ! defined? DOCKER_CNTNR_DEVENV_EXPORT
-    DOCKER_CNTNR_DEVENV_EXPORT = DIR_HOST_LARGEFILES + "/" +
-    DOCKER_CNTNR_DEVENV_BASE + ".tar.bz2"
-end
+#if ! defined? DOCKER_CNTNR_DEVENV_EXPORT
+#    DOCKER_CNTNR_DEVENV_EXPORT = DIR_HOST_LARGEFILES + "/" +
+#    DOCKER_CNTNR_DEVENV_BASE + ".tar.bz2"
+#end
