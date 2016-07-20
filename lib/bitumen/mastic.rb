@@ -21,7 +21,7 @@ module Bitumen
         attr_accessor :cntnr_user
         
         def container_name
-            "#{@name}_devenv"
+            @name
         end
         
         def initialize( new_name )
@@ -104,16 +104,6 @@ module Bitumen
                 :tag => @image_tag,
             }
             
-#            Bitumen::DockerContainer.new self.container_name, {
-#                :repo_base => @repo_base,
-#                :image_name => @image_name,
-#                :image_nobuild => true,
-#                :allow_enter => true,
-#                :publishall => true,
-#                :binds => @binds,
-#                :enter_dep_jobs => enter_dep_jobs,
-#            }
-
             Bitumen::DockerContainer.new self.container_name, {
                 :image_repo => @image_repo,
                 :image_name => @image_name,
@@ -140,22 +130,6 @@ module Bitumen
 
         end
         
-        #        def gen_rake_code
-        #            Rummager::ClickContainer.new CNTNR_DEVENV, {
-        #                :image_name => 'debian4yocto',
-        #                :image_nobuild => true,
-        #                :repo_base => 'y3ddet',
-        #                :binds => [
-        #                    "#{HOST_EXTSRC_PATH}:#{DIR_EXTSRC}",
-        #                    "#{HOST_DLCACHE_PATH}:#{DIR_DLCACHE}",
-        #                ],
-        #                :publishall => true,
-        #                :allow_enter => true,
-        #                :enter_dep_jobs => [
-        #                    :"add_yocto",
-        #                ]
-        #            }
-        #        end
     end # class Mastic
 
 end # module Bitumen
