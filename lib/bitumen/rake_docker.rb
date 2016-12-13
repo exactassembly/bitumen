@@ -146,7 +146,7 @@ module Bitumen
             begin
                 @container_obj ||= Docker::Container.get(@container_name.to_s)
             rescue
-                puts "WARNING: unable to locate docker container '#{@container_name}'"
+                puts "WARNING: unable to locate docker container '#{@container_name}'" if Rake.verbose == true
             end
         end
         
@@ -301,6 +301,14 @@ module Bitumen
     end #ContainerStopTask
 
 
+    class ContainerShellTask < Bitumen::ContainerTaskBase
+        def initialize(task_name,app)
+            super(task_name,app)
+            @actions << Proc.new {
+                exec("docker exec -it #{docker_obj.id} /bin/bash -c \"TERM='xterm' exec >/dev/tty 2>/dev/tty </dev/tty screen /bin/bash -l\"")
+            }
+        end
+    end # ContainerShellTask
 
 
     ##
@@ -357,12 +365,14 @@ module Bitumen
             rmtask.container_name = @container_name
             Rake::Task[ :"docker:containers:#{@container_name}:rm" ].enhance( [ :"docker:containers:#{@container_name}:stop" ] )
             
-            #                    if @noclean == true
-            #                        Rake::Task[:"containers:clobber"].enhance( [ :"containers:#{@container_name}:rm" ] )
-            #                        else
-            #                        Rake::Task[:"containers:clean"].enhance( [ :"containers:#{@container_name}:rm" ] )
-            #                    end
-            #
+            # shell task
+            shelltask = Bitumen::ContainerShellTask.define_task :"docker:containers:#{@container_name}:shell"
+            shelltask.container_name = @container_name
+            Rake::Task[ :"docker:containers:#{@container_name}:shell" ].enhance( [ :"docker:containers:#{@container_name}:start" ] )
+            
+            # clean task (remove)
+            Rake::Task[:"docker:containers:#{@container_name}:rm" ].enhance( [ "docker:containers:#{@container_name}:stop" ] )
+            Rake::Task[:"docker:containers:clean"].enhance( [ :"docker:containers:#{@container_name}:rm" ] )
             
         end
         

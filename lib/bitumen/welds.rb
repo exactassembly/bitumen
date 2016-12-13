@@ -8,7 +8,6 @@ module Bitumen
     class Weld
         attr_reader :mastic
         attr_reader :job_name
-        attr_reader :rummager_object
 
         def initialize( new_mastic )
             if ! new_mastic.instance_of?(Bitumen::Mastic)
@@ -238,7 +237,10 @@ module Bitumen
         attr_accessor :machine_type
         attr_accessor :uri
         attr_accessor :branch
-        
+        attr_accessor :dmirror_path
+        attr_accessor :sstate_mirror_url
+        attr_accessor :sstate_local_path
+
         def initialize( new_mastic, arghash={} )
             super( new_mastic, "poky" )
             if (! arghash.has_key?(:machine_type) )
@@ -246,6 +248,9 @@ module Bitumen
             else
                 @machine_type = arghash.delete(:machine_type)
             end
+            @dmirror_path = arghash.delete(:dmirror_path)
+            @sstate_mirror_url = arghash.delete(:sstate_mirror_url)
+            @sstate_local_path = arghash.delete(:sstate_local_path)
             @uri = arghash.delete(:uri) || Bitumen::GIT_URI_POKY
             @branch = arghash.delete(:branch) || Bitumen::DEFAULT_BRNCH_POKY
         end # def initialize
@@ -292,11 +297,31 @@ module Bitumen
                 :restart_after => true,
             }
 
+            append_text = "MACHINE ?= '#{@machine_type}'\n"
+            append_text << "SANITY_TESTED_DISTROS += ' DebianGNULinux-8 '\n"
+            
+            if ( ! @dmirror_path.nil? )
+                append_text << "SOURCE_MIRROR_URL ?= 'file://#{@dmirror_path}'\n"
+                append_text << "INHERIT += 'own-mirrors'\n"
+                append_text << "BB_GENERATE_MIRROR_TARBALLS = '1'\n"
+            end
+
+            if ( ! @sstate_local_path.nil? )
+                append_text << "SSTATE_DIR ?= 'file://#{@sstate_local_path}'\n"
+            end
+
+            if ( ! @sstate_mirror_url.nil? )
+                append_text << "SSTATE_MIRRORS +='\\\n"
+                append_text << "    file://.* #{@sstate_mirror_url} \\\n"
+                append_text << "'\n"
+            end
+
             @weld_operations << {
                 :type => "fileappend",
                 :filetarget => local_conf_file,
-                :textblob => "MACHINE ?= '#{@machine_type}'",
+                :textblob => append_text,
             }
+
 
         end
 
@@ -308,8 +333,28 @@ module Bitumen
 
     end # class YoctoPokyLayer
 
+    class YoctoConfAppend < Bitumen::Weld
+        attr_accessor :conf_append
+        def initialize( new_mastic, append_text, arghash={} )
+            super( new_mastic )
+            @conf_append = append_text
+            @job_name = "yocto_append_#{Digest::MD5.hexdigest(@conf_append)}"
+        end
+        
+        def late_init
+            super
+            @weld_operations << {
+                :type => "fileappend",
+                :filetarget => local_conf_file,
+                :textblob => @conf_append,
+            }
+        end #late_init
+    end # YoctoConfAppend
+
     class BitbakeTarget < Bitumen::Weld
         attr_accessor :bitbake_target
+        attr_accessor :env_options
+        attr_accessor :artifacts
         
         def initialize( new_mastic, bitbake_target, arghash={} )
             super ( new_mastic )

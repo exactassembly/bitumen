@@ -60,6 +60,14 @@ module Bitumen
             @binds.push( "#{host_path}:#{container_path}" )
         end # def hostBind
 
+        def DownloadMirror( container_path )
+            appendstring = ""
+            config_weld = Bitumen::YoctoConfAppendWeld.new(self,appendstring)
+            @welds << config_weld
+            config_weld.instance_eval(&block) if block_given?
+            return config_weld
+        end
+
         def GitClone(new_uri,arghash={},&block)
             new_weld = Bitumen::GitClone.new(self,new_uri,arghash)
             @welds << new_weld
@@ -127,7 +135,10 @@ module Bitumen
             end
             #            @volumes_from.each do |vf|
             #            end
-
+            
+            Rake::Task.define_task( :"mastics:#{@name}:shell" )
+            Rake::Task[ :"mastics:#{@name}:shell" ].enhance( [ :"docker:containers:#{container_name}:shell" ] )
+            #            Rake::Task[ :"docker:containers:#{container_name}:shell" ].enhance( [ :"mastics:#{@name}:welds:all" ] )
         end
         
     end # class Mastic
